@@ -1,0 +1,23 @@
+# Build directories
+/build/
+*.exe
+*.out
+*.o
+*.a
+*.lib
+*.dll
+
+# IDE files
+.vscode/
+.idea/
+*.user
+*.suo
+*.vcproj.*.filters
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# Other common temporary files
+*~
+*.tmp
+*.log
