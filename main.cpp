@@ -1,14 +1,12 @@
 #include <iostream>
 #include <string>
+#include <ctime> // 用于获取时间戳
 #include "httplib.h"
-#include <json/json.h> // 包含 nlohmann/json 库的头文件
 
 int main() {
     httplib::Server svr;
 
     // --- 添加对 CORS 预检请求 (OPTIONS) 的处理 ---
-    // 浏览器在发送跨域 POST 请求之前，会先发送一个 OPTIONS 请求来询问服务器是否允许。
-    // 如果服务器不响应这个 OPTIONS 请求，真正的 POST 请求会被浏览器阻止。
     svr.Options(".*", [](const httplib::Request& req, httplib::Response& res) {
         res.set_header("Access-Control-Allow-Origin", "*");
         res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -17,46 +15,57 @@ int main() {
         res.set_content("", "text/plain"); // 预检请求通常没有响应体
     });
 
-
-    // GET / 路由：仍然返回固定的 JSON 数据 (可选，可以保留或删除)
+    // GET / 路由：仍然返回固定的 JSON 数据 (可以保留或删除)
     svr.Get("/", [](const httplib::Request& req, httplib::Response& res) {
         res.set_header("Content-Type", "application/json");
-        res.set_header("Access-Control-Allow-Origin", "*"); // 允许所有来源
+        res.set_header("Access-Control-Allow-Origin", "*");
         std::string json_response_body = R"({"message": "Hello from C++ Web Server!", "data": {"name": "YourName", "age": 25}})";
         res.set_content(json_response_body, "application/json");
     });
 
-    // --- 新增 POST /api/process 路由 ---
+    // --- 新增 POST /api/process 路由 (不使用 json.hpp) ---
     svr.Post("/api/process", [](const httplib::Request& req, httplib::Response& res) {
         // 设置 CORS 头部，允许前端跨域请求
         res.set_header("Access-Control-Allow-Origin", "*");
         res.set_header("Content-Type", "application/json"); // 响应类型为 JSON
 
-        // 尝试解析请求体为 JSON
-        Json::Value request_json;
-        Json::Reader reader;
-        bool parsingSuccessful = reader.parse(req.body, request_json);
+        // 从请求体中直接获取原始字符串作为输入
+        std::string received_raw_body = req.body;
 
-        Json::Value response_json; // 准备构建响应 JSON
-
-        if (parsingSuccessful) {
-            // 从请求 JSON 中获取 'input' 字段的值
-            std::string received_input = request_json.get("input", "No input provided").asString();
-
-            // 构建响应 JSON
-            response_json["status"] = "success";
-            response_json["original_input"] = received_input;
-            response_json["processed_message"] = "Server received your input: " + received_input;
-            response_json["timestamp"] = std::time(nullptr); // 添加时间戳
-
-            res.set_content(response_json.toStyledString(), "application/json"); // 发送格式化后的 JSON 字符串
-        } else {
-            // JSON 解析失败
-            response_json["status"] = "error";
-            response_json["message"] = "Invalid JSON in request body.";
-            res.set_content(response_json.toStyledString(), "application/json");
-            res.status = 400; // 设置 HTTP 状态码为 400 Bad Request
+        // 假设前端发送的是简单的键值对 JSON，例如 {"input": "你的输入"}
+        // 为了简化，这里我们不对其进行严格的JSON解析，
+        // 而是尝试从一个预期的 JSON 结构中“提取” input 的值。
+        // 这是一个非常简陋的解析，实际项目中应该使用JSON库。
+        std::string received_input = "No input found";
+        std::string search_key = "\"input\": \"";
+        size_t start_pos = received_raw_body.find(search_key);
+        if (start_pos != std::string::npos) {
+            start_pos += search_key.length();
+            size_t end_pos = received_raw_body.find("\"", start_pos);
+            if (end_pos != std::string::npos) {
+                received_input = received_raw_body.substr(start_pos, end_pos - start_pos);
+            }
         }
+        // 简单地对接收到的字符串进行 HTML 转义，以防止注入（虽然这里很简单）
+        // 例如，如果输入有双引号，需要转义
+        std::string escaped_input = received_input;
+        // 替换所有双引号为 \"，以便安全地放入JSON字符串
+        size_t pos = escaped_input.find('"');
+        while(pos != std::string::npos) {
+            escaped_input.replace(pos, 1, "\\\"");
+            pos = escaped_input.find('"', pos + 2); // 从新位置继续查找
+        }
+
+
+        // 手动构建 JSON 响应字符串
+        std::string response_json_body = "{";
+        response_json_body += "\"status\": \"success\",";
+        response_json_body += "\"original_input\": \"" + escaped_input + "\",";
+        response_json_body += "\"processed_message\": \"Server received your input: " + escaped_input + "\",";
+        response_json_body += "\"timestamp\": " + std::to_string(std::time(nullptr)); // 添加时间戳
+        response_json_body += "}";
+
+        res.set_content(response_json_body, "application/json");
     });
 
     std::cout << "C++ Web Server starting on port 8080..." << std::endl;
