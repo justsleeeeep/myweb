@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>前端与后端交互示例</title>
     <style>
-        /* 这里是CSS样式，用来美化页面，不是必须的，但会让页面更好看 */
         body {
             font-family: Arial, sans-serif;
             margin: 20px;
@@ -24,7 +23,33 @@
         h1 {
             color: #0056b3;
         }
-        #backend-data {
+        .input-section {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #e0f7fa; /* 浅蓝色背景 */
+        }
+        input[type="text"] {
+            width: calc(100% - 22px); /* 减去padding和border */
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .output-section {
             margin-top: 20px;
             padding: 15px;
             border: 1px solid #ddd;
@@ -33,61 +58,86 @@
             text-align: left;
         }
         pre {
-            white-space: pre-wrap; /* 允许文本换行 */
-            word-wrap: break-word; /* 允许长单词换行 */
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .error-message {
+            color: red;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>从 C++ 后端获取数据</h1>
-        <p>下面的内容是通过 JavaScript 从你的服务器动态获取的：</p>
-        <div id="backend-data">
-            <p>加载中...</p>
+        <h1>前端与 C++ 后端交互</h1>
+        <p>在下方输入内容，然后点击按钮发送到 C++ 后端。</p>
+
+        <div class="input-section">
+            <input type="text" id="userInput" placeholder="在这里输入一些内容...">
+            <button id="sendButton">发送到后端</button>
+        </div>
+
+        <div class="output-section">
+            <h2>后端响应：</h2>
+            <div id="backendResponse">
+                <p>等待你的输入...</p>
+            </div>
         </div>
     </div>
 
     <script>
-        // 这段 JavaScript 代码会在页面加载完成后自动运行
+        // 当页面内容完全加载后执行此函数
         document.addEventListener('DOMContentLoaded', () => {
-            // !!! 重要：请将 '118.178.109.122' 替换为你的 ECS 服务器的实际公网 IP 地址 !!!
-            const backendUrl = 'http://118.178.109.122'; 
+            // !!! 重要：替换为你的 ECS 服务器的公网 IP 地址 !!!
+            // 这里不需要加端口号 8080，因为 Nginx 已经监听 80 端口并转发了
+            const backendBaseUrl = 'http://118.178.109.122'; // <<<<<<< 这里替换成你的实际公网 IP
 
-            // 使用 fetch API 向后端发送 GET 请求
-            // fetch() 是现代浏览器内置的，用于发起网络请求的函数
-            fetch(backendUrl)
-                .then(response => {
-                    // response 是服务器返回的 HTTP 响应对象
-                    // 检查 HTTP 响应的状态码是否表示成功 (200-299)
+            const userInput = document.getElementById('userInput');
+            const sendButton = document.getElementById('sendButton');
+            const backendResponseDiv = document.getElementById('backendResponse');
+
+            sendButton.addEventListener('click', async () => {
+                const inputValue = userInput.value; // 获取用户输入的值
+
+                if (!inputValue) {
+                    alert('请输入一些内容！');
+                    return;
+                }
+
+                backendResponseDiv.innerHTML = '<p>发送中...</p>'; // 显示加载状态
+
+                try {
+                    const response = await fetch(`${backendBaseUrl}/api/process`, {
+                        method: 'POST', // 使用 POST 方法
+                        headers: {
+                            'Content-Type': 'application/json' // 告诉后端我们发送的是 JSON
+                        },
+                        // 将输入值封装成 JSON 字符串作为请求体
+                        body: JSON.stringify({ input: inputValue })
+                    });
+
                     if (!response.ok) {
-                        // 如果状态码不是 2xx，表示请求失败，抛出错误
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
-                    // 将响应体解析为 JSON 格式
-                    // .json() 方法返回一个 Promise，它解析为响应体的 JSON 表示
-                    return response.json();
-                })
-                .then(data => {
-                    // data 是从服务器获取并解析后的 JavaScript 对象（就是你的 JSON 数据）
-                    // 获取用于显示数据的 HTML 元素
-                    const dataDiv = document.getElementById('backend-data');
-                    // 更新这个元素的 HTML 内容，将获取到的数据显示出来
-                    dataDiv.innerHTML = `
-                        <p><strong>Message:</strong> ${data.message}</p>
-                        <p><strong>Data - Name:</strong> ${data.data.name}</p>
-                        <p><strong>Data - Age:</strong> ${data.data.age}</p>
+
+                    const data = await response.json(); // 解析响应为 JSON
+
+                    // 根据后端返回的数据更新页面
+                    backendResponseDiv.innerHTML = `
+                        <p><strong>状态:</strong> ${data.status}</p>
+                        <p><strong>原始输入:</strong> ${data.original_input}</p>
+                        <p><strong>后端消息:</strong> ${data.processed_message}</p>
+                        <p><strong>时间戳:</strong> ${new Date(data.timestamp * 1000).toLocaleString()}</p>
                         <hr>
-                        <p><strong>原始 JSON 数据:</strong></p>
+                        <p><strong>原始 JSON 响应:</strong></p>
                         <pre>${JSON.stringify(data, null, 2)}</pre>
                     `;
-                })
-                .catch(error => {
-                    // 如果在请求发送、网络连接或数据解析过程中发生任何错误，都会在这里被捕获
-                    const dataDiv = document.getElementById('backend-data');
-                    dataDiv.innerHTML = `<p style="color: red;">获取数据失败: ${error.message}</p>`;
-                    // 将错误信息打印到浏览器的控制台，方便调试
-                    console.error('There was a problem with the fetch operation:', error);
-                });
+
+                } catch (error) {
+                    backendResponseDiv.innerHTML = `<p class="error-message">获取数据失败: ${error.message}</p>`;
+                    console.error('发送请求或处理响应时出错:', error);
+                }
+            });
         });
     </script>
 </body>
